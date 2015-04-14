@@ -13,6 +13,8 @@ import traceback
 Version = '1.0'
 
 BeepPin = 1
+FILM_OFFSET = 60
+LL_OFFSET = 45
 
 GAS = ('Ar','CO2','O2','CF4','SF6')
 BTN_COLOUR = {
@@ -476,22 +478,25 @@ class Etcher(EtcherFrame, COMOperator):
 
 
     def refreshMFCs(self,interval = 0.5):
-        while True:
-            ret,val = self.mfcs[MFC_Addr.keys()[0]].getAll()
-            LOG.debug(val)
-            if ret:
-                wx.CallAfter(self.label_Ar.SetLabel,'%4.1f' % ( val["Ar"] * 100.0 ))
-                wx.CallAfter(self.label_CO2.SetLabel,'%4.1f' % ( val["CO2"] * 100.0 ) )
-                wx.CallAfter(self.label_O2.SetLabel,'%4.1f' % ( val["O2"] * 100.0 ) )
-                wx.CallAfter(self.label_CF4.SetLabel,'%4.1f' % ( val["CF4"] * 100.0 ) )
-                wx.CallAfter(self.label_SF6.SetLabel,'%4.1f' % ( val["SF6"] * 100.0 ) )
-                LOG.debug('MFCs were refreshed!')
-                wx.CallAfter(self.label_cvd_pressure.SetLabel,'反应气压：%5.3f'% ( val["Film"] * 1000.0 ) )
-#                wx.CallAfter(self.label_High.SetLabel,'高真空：%.2e'% float(vals['CVD_High']))
-#                wx.CallAfter(self.label_Low.SetLabel,'低真空：%.2e'% float(vals['CVD_Low']))
-#                wx.CallAfter(self.label_ll_pressure.SetLabel,'气压：%.2e'% float(vals['Loadlock']))
-            time.sleep(interval)
+        try:
 
+            while True:
+                ret,val = self.mfcs[MFC_Addr.keys()[0]].getAll()
+                LOG.debug(val)
+                if ret:
+                    wx.CallAfter(self.label_Ar.SetLabel,'%4.1f' % ( val["Ar"] * 100.0 ))
+                    wx.CallAfter(self.label_CO2.SetLabel,'%4.1f' % ( val["CO2"] * 100.0 ) )
+                    wx.CallAfter(self.label_O2.SetLabel,'%4.1f' % ( val["O2"] * 100.0 ) )
+                    wx.CallAfter(self.label_CF4.SetLabel,'%4.1f' % ( val["CF4"] * 100.0 ) )
+                    wx.CallAfter(self.label_SF6.SetLabel,'%4.1f' % ( val["SF6"] * 100.0 ) )
+                    LOG.debug('MFCs were refreshed!')
+                    wx.CallAfter(self.label_cvd_pressure.SetLabel,'反应气压：%5.3f mTorr'% ( val["Film"] * 1000.0 - FILM_OFFSET) )
+    #                wx.CallAfter(self.label_High.SetLabel,'高真空：%.2e'% float(val['CVD_High']))
+    #                wx.CallAfter(self.label_Low.SetLabel,'低真空：%.2e'% float(val['CVD_Low']))
+                     wx.CallAfter(self.label_ll_pressure.SetLabel,'气压：%5.3f mTorr'% (float(val['Loadlock'] - LL_OFFSET )))
+                time.sleep(interval)
+        except Exception as ex:
+            LOG.warn("Refresh MFCs error: %s"%ex)
 
     def refreshValves(self,interval = 1):
         time.sleep(interval)
@@ -505,8 +510,14 @@ class Etcher(EtcherFrame, COMOperator):
             ctrl.SetBackgroundColour(BTN_COLOUR['ON_BG'])
             #ctrl.SetForegroundColour(BTN_COLOUR['ON_FG'])    
         else:
-            ctrl.SetBackgroundColour(BTN_COLOUR['OFF_BG'])
-            #ctrl.SetForegroundColour(BTN_COLOUR['OFF_FG'])            
+            ctrl.SetBackgroundColour(BTN_COLO：广州
+性别：保密
+
+注册时间：UR['OFF_BG'])
+            #ctrl.SetForegroundColour(BTN_COL：广州
+性别：保密
+
+注册时间：OUR['OFF_FG'])            
     def appendLog(self,info):
         info = '%s:\n %s '% (time.strftime('%H:%M:%S',time.localtime(time.time())), info)
         self.txt_log.AppendText("\n%s"%info)
@@ -558,70 +569,74 @@ class Etcher(EtcherFrame, COMOperator):
         #self.load()
         
     def btn_gateOpenOnButtonClick( self, event ):
+
         if wx.NO == wx.MessageBox('要打开门阀，继续?' ,'Question',wx.YES_NO|wx.ICON_QUESTION):
-            return        
+            return
+        self.setFlag(self.btn_gateOpen,True)
+        self.setFlag(self.btn_gateClose,False)
+
         if not self.valves['Gate'].open():
             wx.MessageBox('打开门阀时出错!','Warning',wx.YES|wx.ICON_WARNING)
             self.setFlag(self.btn_gateOpen,valid = False)
             return
-        self.setFlag(self.btn_gateOpen,True)
-        self.setFlag(self.btn_gateClose,False)
+        
         
     def btn_GateCloseOnButtonClick( self, event ):
         if wx.NO == wx.MessageBox('要关闭门阀，继续?', 'Question', wx.YES_NO|wx.ICON_QUESTION):
             return
+        self.setFlag(self.btn_gateOpen,False)
+        self.setFlag(self.btn_gateClose,True)
+
         if not self.valves['Gate'].close():
             wx.MessageBox('关闭门阀时出错!', 'Warning',wx.YES|wx.ICON_WARNING)
             self.setFlag(self.btn_gateClose,valid = False)
-            return
-        self.setFlag(self.btn_gateOpen,False)
-        self.setFlag(self.btn_gateClose,True)
-    
+            return    
 
     def btn_llLoadInOnButtonClick( self, event ):
-        
-        self.mount()
+                
         self.setFlag(self.btn_llLoadOut,False)
         self.setFlag(self.btn_llLoadIn)    
-     
+        self.mount()
 
     def btn_llLoadOutOnButtonClick( self, event ):
-        self.unmount()
+        
         self.setFlag(self.btn_llLoadOut)
         self.setFlag(self.btn_llLoadIn,False)        
-        
+        self.unmount()
+
+
     def btn_tpOnOnButtonClick( self, event ):
         if wx.NO == wx.MessageBox('要打开插板阀，继续?' ,'Question',wx.YES_NO|wx.ICON_QUESTION):
             return        
-        if not self.valves['TPVa'].open():
-            wx.MessageBox('打开插板阀时出错!','Warning',wx.YES|wx.ICON_WARNING)
-            self.setFlag(self.btn_tpOn,valid = False )
-            return
         self.setFlag(self.btn_tpOn)
         self.setFlag(self.btn_tpOff,False)
 
+        if not self.valves['TPVa'].open():
+            wx.MessageBox('打开插板阀时出错!','Warning',wx.YES|wx.ICON_WARNING)
+            self.setFlag(self.btn_tpOn,valid = False )
+            return        
+
     def btn_tpOffOnButtonClick( self, event ):
         if wx.NO == wx.MessageBox('要关闭插板阀，继续?' ,'Question',wx.YES_NO|wx.ICON_QUESTION):
-            return        
+            return
+        self.setFlag(self.btn_tpOff)
+        self.setFlag(self.btn_tpOn,False)    
         if not self.valves['TPVa'].close():
             wx.MessageBox('关闭插板阀时出错!','Warning',wx.YES|wx.ICON_WARNING)
             self.setFlag(self.btn_tpOff,valid = False )
             return
-        self.setFlag(self.btn_tpOff)
-        self.setFlag(self.btn_tpOn,False)
+        
         
     def btn_leakOnOnButtonClick( self, event ):
-        if self.valves['Leak'].open():
-            self.setFlag(self.btn_leakOn)
-            self.setFlag(self.btn_leakOff,False)
-        else:
+        self.setFlag(self.btn_leakOn)
+        self.setFlag(self.btn_leakOff,False)
+        if not self.valves['Leak'].open():
             self.setFlag(self.btn_leakOn,valid = False)
 
     def btn_leakOffOnButtonClick( self, event ):
-        if self.valves['Leak'].close():
-            self.setFlag(self.btn_leakOff)
-            self.setFlag(self.btn_leakOn,False)
-        else:
+        self.setFlag(self.btn_leakOff)
+        self.setFlag(self.btn_leakOn,False)
+        if not self.valves['Leak'].close():
             self.setFlag(self.btn_leakOff,valid = False)
 
 
@@ -629,40 +644,46 @@ class Etcher(EtcherFrame, COMOperator):
         
         if wx.NO == wx.MessageBox('要打开预抽阀，继续?' ,'Question',wx.YES_NO|wx.ICON_QUESTION):
             return        
+        self.setFlag(self.btn_isoOn)
+        self.setFlag(self.btn_isoOff,False) 
         if not self.valves['Isol'].open():
             wx.MessageBox('打开预抽阀时出错!','Warning',wx.YES|wx.ICON_WARNING)
             self.setFlag(self.btn_isoOn,valid = False )
             return
-        self.setFlag(self.btn_isoOn)
-        self.setFlag(self.btn_isoOff,False)    
+           
     def btn_isoOffOnButtonClick( self, event ):
         if wx.NO == wx.MessageBox('要关闭预抽阀，继续?' ,'Question',wx.YES_NO|wx.ICON_QUESTION):
             return        
+        self.setFlag(self.btn_isoOff)
+        self.setFlag(self.btn_isoOn,False)
+
         if not self.valves['Isol'].close():
             wx.MessageBox('关闭预抽阀时出错!','Warning',wx.YES|wx.ICON_WARNING)
             self.setFlag(self.btn_isoOff,valid = False )
-            return
-        self.setFlag(self.btn_isoOff)
-        self.setFlag(self.btn_isoOn,False)
+            returnal / 100 * self.throttle.maxRange - self.throttle.
+        
         
     def btn_roughOnOnButtonClick( self, event ):
         if wx.NO == wx.MessageBox('要打开前级阀，继续?' ,'Question',wx.YES_NO|wx.ICON_QUESTION):
             return        
+        self.setFlag(self.btn_roughOn)
+        self.setFlag(self.btn_roughOff,False) 
         if not self.valves['Angl'].open():
             wx.MessageBox('打开前级阀时出错!','Warning',wx.YES|wx.ICON_WARNING)
             self.setFlag(self.btn_roughOn,valid = False )
             return
-        self.setFlag(self.btn_roughOn)
-        self.setFlag(self.btn_roughOff,False)        
+               
     def btn_roughOffOnButtonClick( self, event ):
         if wx.NO == wx.MessageBox('要关闭前级阀，继续?' ,'Question',wx.YES_NO|wx.ICON_QUESTION):
             return        
+        self.setFlag(self.btn_roughOff)
+        self.setFlag(self.btn_roughOn,False)
+
         if not self.valves['Angl'].close():
             wx.MessageBox('关闭前级阀时出错!','Warning',wx.YES|wx.ICON_WARNING)
             self.setFlag(self.btn_roughOff, valid = False )
             return
-        self.setFlag(self.btn_roughOff)
-        self.setFlag(self.btn_roughOn,False)
+        
         
     def btn_powerOnOnButtonClick( self, event ):
         
@@ -680,88 +701,105 @@ class Etcher(EtcherFrame, COMOperator):
         
         
     def btn_powerOffOnButtonClick( self, event ):
-        self.gd_off = True
         self.setFlag(self.btn_powerOff)
         self.setFlag(self.btn_powerOn,False)
+
+        self.gd_off = True
+        
         
     def btn_gasFeedOnOnButtonClick( self, event ):
         if wx.NO == wx.MessageBox('要开始进气，继续?' ,'Question',wx.YES_NO|wx.ICON_QUESTION):
             return        
+        self.setFlag(self.btn_gasFeedOn)
+        self.setFlag(self.btn_GasFeedOff,False) 
+
         if not self.valves['Feed'].open():
             wx.MessageBox('打开进气阀时出错!','Warning',wx.YES|wx.ICON_WARNING)        
             return
-        self.setFlag(self.btn_gasFeedOn)
-        self.setFlag(self.btn_GasFeedOff,False)        
+               
     def btn_GasFeedOffOnButtonClick( self, event ):
         if wx.NO == wx.MessageBox('要停止进气，继续?' ,'Question',wx.YES_NO|wx.ICON_QUESTION):
             return        
+        self.setFlag(self.btn_GasFeedOff)
+        self.setFlag(self.btn_gasFeedOn,False)
+
         if not self.valves['Feed'].close():
             wx.MessageBox('关闭进气阀时出错!','Warning',wx.YES|wx.ICON_WARNING)
             return
-        self.setFlag(self.btn_GasFeedOff)
-        self.setFlag(self.btn_gasFeedOn,False)                
+                        
         
     def btn_liftDownOnButtonClick( self, event ):
+        self.setFlag(self.btn_liftDown)
+        self.setFlag(self.btn_liftUp,False)
         if not self.valves['Pins'].close():
             wx.MessageBox('抬起样品时出错!','Warning',wx.YES|wx.ICON_WARNING)
             self.setFlag(self.btn_liftDown,valid = False)
             return
-        self.setFlag(self.btn_liftDown)
-        self.setFlag(self.btn_liftUp,False)
+        
     def btn_liftUpOnButtonClick( self, event ):
+        self.setFlag(self.btn_liftUp)
+        self.setFlag(self.btn_liftDown,False)
         if not self.valves['Pins'].open():
             wx.MessageBox('放下样品时出错!','Warning',wx.YES|wx.ICON_WARNING)
             self.setFlag(self.btn_liftUp,valid = False)
             return
-        self.setFlag(self.btn_liftUp)
-        self.setFlag(self.btn_liftDown,False)
+        
 
     def btn_filmOnOnButtonClick( self, event ):
+        self.setFlag(self.btn_filmOn)
+        self.setFlag(self.btn_filmOff,False)
+
         if not self.valves['Film'].open():
             wx.MessageBox('打开薄膜计隔离阀时出错!','Warning',wx.YES|wx.ICON_WARNING)
             self.setFlag(self.btn_filmOn,valid = False)
             return
-        self.setFlag(self.btn_filmOn)
-        self.setFlag(self.btn_filmOff,False)
+        
 
     def btn_filmOffOnButtonClick( self, event ):
+        self.setFlag(self.btn_filmOff)
+        self.setFlag(self.btn_filmOn,False)
         if not self.valves['Film'].close():
             wx.MessageBox('关闭薄膜计隔离阀时出错!','Warning',wx.YES|wx.ICON_WARNING)
             self.setFlag(self.btn_filmOff,valid = False)
             return
-        self.setFlag(self.btn_filmOff)
-        self.setFlag(self.btn_filmOn,False)
+        
 
     def btn_vacuumOnOnButtonClick( self, event ):
+        self.setFlag(self.btn_vacuumOn)
+        self.setFlag(self.btn_vacuumOff,False) 
         if not self.valves['Vacu'].open():
             wx.MessageBox('打开罗茨泵截止阀时出错!','Warning',wx.YES|wx.ICON_WARNING)
             self.setFlag(self.btn_vacuumOn,valid = False)
             return
-        self.setFlag(self.btn_vacuumOn)
-        self.setFlag(self.btn_vacuumOff,False) 
+        
     def btn_vacuumOffOnButtonClick( self, event ):
+        self.setFlag(self.btn_vacuumOff)
+        self.setFlag(self.btn_vacuumOn,False)
         if not self.valves['Vacu'].close():
             wx.MessageBox('关闭罗茨泵截止阀时出错!','Warning',wx.YES|wx.ICON_WARNING)
             self.setFlag(self.btn_vacuumOff,vallid = False)
             return
-        self.setFlag(self.btn_vacuumOff)
-        self.setFlag(self.btn_vacuumOn,False)
+        
 
     def btn_throttleAutoOnToggleButton( self, event ):
         self.throttle.manualMode = self.btn_throttleAuto.GetValue()
 
     def btn_throttleOpenOnButtonClick( self, event ):
-        self.throttle.gotoLimit()
-        self.spin_throttleValue.SetValue(int(self.throttle.location / self.throttle.maxRange * 100))
-
         self.setFlag(self.btn_throttlOpen)
         self.setFlag(self.btn_throttleClose,False)         
 
+        self.throttle.gotoLimit()
+        self.spin_throttleValue.SetValue(int(self.throttle.location / self.throttle.maxRange * 100))
+
+        
+
     def btn_throttleCloseOnButtonClick( self, event ):
+        self.setFlag(self.btn_throttlClose)
+        self.setFlag(self.btn_throttleOpen,False) 
+
         self.throttle.gotoZero()
         self.spin_throttleValue.SetValue(int(self.throttle.location / self.throttle.maxRange * 100))
-        self.setFlag(self.btn_throttlClose)
-        self.setFlag(self.btn_throttleOpen,False)                 
+                        
 
     def spin_throttleValueOnSpinCtrl( self, event ):
         self.spin_throttleValueOnTextEnter()
@@ -816,7 +854,8 @@ class Etcher(EtcherFrame, COMOperator):
             self.appendLog("%s valve was CLOSED"% (gasname))
         fv = flowvalue  # * MFC_FULL_SCALE / MFC_Addr[gasname][3]  # tranlate to voltage signal
         self.mfcs[gasname].setFlow(fv)
-        self.appendLog("%s was adjusted to %s SCCM"% (gasname, flowvalue))        
+        ,fv = self.mfcs[gasname].getFlow()
+        self.appendLog("%s was adjusted to %s SCCM"% (gasname, fv))
 
     def check_CO2OnCheckBox( self, event ):
         if (self.check_CO2.IsChecked()):
@@ -838,7 +877,9 @@ class Etcher(EtcherFrame, COMOperator):
             return
         fv = flowvalue  # * MFC_FULL_SCALE / MFC_Addr[gasname][3]  # tranlate to voltage signal
         self.mfcs[gasname].setFlow(fv)
-        self.appendLog("%s was adjusted to %s SCCM"% (gasname, flowvalue))
+        ,fv = self.mfcs[gasname].getFlow()
+        self.appendLog("%s was adjusted to %s SCCM"% (gasname, fv))
+
         if flowvalue > 0:            
             self.valves[gasname].open()
             self.btn_setCO2.SetBackgroundColour(BTN_COLOUR['ON_BG'])
@@ -872,7 +913,9 @@ class Etcher(EtcherFrame, COMOperator):
             return
         fv = flowvalue  # * MFC_FULL_SCALE / MFC_Addr[gasname][3]  # tranlate to voltage signal
         self.mfcs[gasname].setFlow(fv)
-        self.appendLog("%s was adjusted to %s SCCM"% (gasname, flowvalue))
+        ,fv = self.mfcs[gasname].getFlow()
+        self.appendLog("%s was adjusted to %s SCCM"% (gasname, fv))
+
         if flowvalue > 0:            
             self.valves[gasname].open()
             self.btn_setO2.SetBackgroundColour(BTN_COLOUR['ON_BG'])
@@ -906,7 +949,9 @@ class Etcher(EtcherFrame, COMOperator):
             return
         fv = flowvalue  # * MFC_FULL_SCALE / MFC_Addr[gasname][3]  # tranlate to voltage signal
         self.mfcs[gasname].setFlow(fv)
-        self.appendLog("%s was adjusted to %s SCCM"% (gasname, flowvalue))
+        ,fv = self.mfcs[gasname].getFlow()
+        self.appendLog("%s was adjusted to %s SCCM"% (gasname, fv))
+
         if flowvalue > 0:            
             self.valves[gasname].open()
             self.btn_setCF4.SetBackgroundColour(BTN_COLOUR['ON_BG'])
@@ -939,7 +984,9 @@ class Etcher(EtcherFrame, COMOperator):
             return
         fv = flowvalue  # * MFC_FULL_SCALE / MFC_Addr[gasname][3]  # tranlate to voltage signal
         self.mfcs[gasname].setFlow(fv)
-        self.appendLog("%s was adjusted to %s SCCM"% (gasname, flowvalue))
+        ,fv = self.mfcs[gasname].getFlow()
+        self.appendLog("%s was adjusted to %s SCCM"% (gasname, fv))
+
         if flowvalue > 0:            
             self.valves[gasname].open()
             self.btn_setSF6.SetBackgroundColour(BTN_COLOUR['ON_BG'])
@@ -1011,7 +1058,7 @@ class Etcher(EtcherFrame, COMOperator):
             ret,data = self.readCOM()            
             if ret:
                 status = []
-                for i in data:
+                for i in data[3:3+bitcount]:
                     status.append(ord(i))
                 
                 self.appendLog('Read DIO %s, returned:%s' % (addr,status))

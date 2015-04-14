@@ -107,13 +107,13 @@ Valve_Addr = {
 MFC_Addr = {
     'Ar':   [AO1_Addr,AI1_Addr,0,100.0,30100],
     'CO2':  [AO1_Addr,AI1_Addr,1,100.0,30140],
-    'O2':   [AO1_Addr,AI1_Addr,2,100.0,30180],
+    'O2':   [AO1_Addr,AI1_Addr,5,100.0,30180],
     'CF4':  [AO1_Addr,AI1_Addr,3,100.0,30220],
     'SF6':  [AO1_Addr,AI1_Addr,4,100.0,30260],
     'Film':    [AO1_Addr,AI1_Addr,7,100,30300],
     'Loadlock':[AO1_Addr,AI1_Addr,5,100,30340],
-    'CVD_High':[AO1_Addr,AI1_Addr,6,100,30380],
-    'CVD_Low': [AO1_Addr,AI1_Addr,6,100,30420]
+    'CVD_High':[AO1_Addr,AI1_Addr,2,100,30380],
+    'CVD_Low': [AO1_Addr,AI1_Addr,2,100,30420]
 }
 
 Gauge_Addr = {
@@ -391,7 +391,7 @@ class COMOperator(object):
                 ret_str = 'None'
             else:
                 for i in crc:
-                    ret_str = ret_str + '%X' % i
+                    ret_str = ret_str + '%X' % ord( i )
             self.log.warn('Recieved %s bytes data: %s (Invalid)' % (len(read_data),ret_str))
             return False,read_data
 '''
@@ -473,7 +473,7 @@ class Valve(object):
         self.port = port
 
         #if init2closed :
-            #self.close()
+        self.close()
         #else:
             #self.open()
         self.port.log.info("Valve %s is initilized AS IS!"% (self.id))
@@ -481,7 +481,7 @@ class Valve(object):
         s=[self.addr, SINGLE_WRITE_DO, 0x00, self.bit, 0xFF, 0x00]
         if self.port.writeCOM( s ):
             ret,buf = self.port.readCOM()
-            if ret and len(buf) >   5:
+            if ret and len(buf) > 5:
                 if ord(buf[ 4 ]) > 0:
                     self.port.log.info('Open valve %s SUCCESSFULLY'%self.id)
                     return True
@@ -674,11 +674,22 @@ class Motor(object):
         self.zero = 0
         self.LL = 0
         self.RL = 0
-        self.stepsize = 2000
-        self.steptime = 0.1
-        
+        self.stepsize = 1000
+        self.steptime = 0.2
+
+        self.findLimit()
+
+
         self.port.log.info("Motor %s is initilized !"%self.id)
-        
+
+    def findLimit(self):
+        self.gotoLimit()
+        self.maxRange = 0
+        while self.zero == 0:
+            self.move(self.stepsize,True)
+            self.readStatus()
+            self.maxRange += self.stepsize
+
     def move(self,pulses,isBackward = False):
 
         s=[self.addr,0x32,0x04,0x00,0x00,0x00,0x00]
@@ -732,9 +743,9 @@ class Motor(object):
             return False,None        
         ret,data = self.port.readCOM()
         if ret:
-##            self.running,self.LL,self.zero,self.RL = \
-##                                            ( ord( data[3] ), ord( data[4] ),\
-##                                            ord( data[5] ),ord( data[6] ) )
+            self.running,self.LL,self.zero,self.RL = \
+                                            ( ord( data[3] ), ord( data[4] ),\
+                                            ord( data[5] ),ord( data[6] ) )
             return True,( ord( data[3] ), ord( data[4] ),\
                           ord( data[5] ),ord( data[6] ) )
         else:
