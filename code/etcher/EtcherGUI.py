@@ -439,7 +439,7 @@ class EtcherFrame ( wx.Frame ):
 		
 		bSizer83 = wx.BoxSizer( wx.VERTICAL )
 		
-		self.spin_throttleValue = wx.SpinCtrl( self, wx.ID_ANY, wx.EmptyString, wx.DefaultPosition, wx.DefaultSize, wx.SP_ARROW_KEYS, 0, 100, 10 )
+		self.spin_throttleValue = wx.SpinCtrl( self, wx.ID_ANY, wx.EmptyString, wx.DefaultPosition, wx.DefaultSize, wx.SP_ARROW_KEYS, 0, 100, 0 )
 		self.spin_throttleValue.SetFont( wx.Font( 12, 74, 90, 92, False, "Sans" ) )
 		
 		bSizer83.Add( self.spin_throttleValue, 1, wx.ALIGN_LEFT|wx.ALL, 5 )

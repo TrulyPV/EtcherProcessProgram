@@ -13,23 +13,21 @@ import traceback
 Version = '1.0'
 
 BeepPin = 1
-FILM_OFFSET = 60
-LL_OFFSET = 45
+FILM_OFFSET = 55.9
+LL_OFFSET = 54.5
 
 GAS = ('Ar','CO2','O2','CF4','SF6')
 BTN_COLOUR = {
-    'ON_BG' : 'green',
-    'ON_FG' : 'black',
+    'ON_FG' : 'blue',
+    'ON_BG' : 'green',    
     'OFF_FG': '#%X%X%X'%(  212,57, 15 ),
     'OFF_BG': '#%X%X%X'%( 0,255,0 ),
     'Unkown_FG':'black',
     'Unkown_BG':'red'
 }
-#BTN_FONT = {
-#        'ON' : (( 11, wx.DEFAULT, wx.NORMAL, wx.BOLD, False)),
-#        "OFF": (( 11, wx.DEFAULT, wx.NORMAL, wx.NORMAL, False))
-#       }
-# logging parameters
+
+
+## logging parameters
 LOGFILE = "etcher.log"
 MAXLOGSIZE = 2*1024*1024    #Bytes
 BACKUPCOUNT = 2
@@ -68,6 +66,8 @@ class Throttle(Motor,threading.Thread):
         self.pressure = 0
         self.accuracy = 0.01    # 1%的精度
         self.rdy = threading.Event()
+
+
     def run(self):
         self.thread_stop = False
         
@@ -79,12 +79,14 @@ class Throttle(Motor,threading.Thread):
     def stop(self):
         self.thread_stop = True
         self.join()
+
     def initPID(self,aimPressure,totalFlow,startPressure):
         self.gotoZero()
         self.pressure = startPressure
         self.aimPressure = aimPressure
         self.totalFlow = totalFlow
         self.rdy.set()
+
     def doPressureAdjust(self,period = 0.5):
         # adjust the throttle valve angle to steady the pressure in CVD chamber
         nextLocation = self.doPID()
@@ -104,6 +106,7 @@ class Throttle(Motor,threading.Thread):
         e_pre = e
         
         return nextLocation
+
 class Operator(object):
     def __init__(self,ID):
         self.ID = ID
@@ -139,19 +142,11 @@ class Sample(object):
         self.recipe['Pressure'] = {}
         self.recipe['GDTime'] = {}
         
-#class BiValve(Valve):
-        #def __init__(self, ID, port):
-            #self.ID = ID
-            #self.ONState = Valve(BiValveList[ID][0], port,False)
-            #self.OFFState = Valve(BiValveList[ID][1], port)
-        #def turnON(self):
-            #return self.OFFState.open()# and self.ONState.open()
-        #def turnOFF(self):
-            #return self.ONState.close()# and self.OFFState.open()
 def call_after(func):  
     def _wrapper(*args, **kwargs):  
         return wx.CallAfter(func, *args, **kwargs)  
-    return _wrapper        
+    return _wrapper    
+
 class Etcher(EtcherFrame, COMOperator):      
 
     def __init__(self):
@@ -159,14 +154,20 @@ class Etcher(EtcherFrame, COMOperator):
         COMOperator.__init__(self, LOG)
         
         self.operator = None
+
+        LOG.info('initializing throttle, robot, rfpower ... ')
         self.throttle = Throttle("Throttle", self)
+        #self.throttle.findLimit()
         self.robot = Motor("Robot", self)
         self.rf = RFPower('Yantuo',self)
+
+        LOG.info('initializing pumps ... ')
         self.pumps = {'LL':Pump('LL'),
                       'LL_TMP':Pump('LL_TMP'),
                       'CVD':Pump('CVD'),
                       'CVD_TMP':Pump('CVD_TMP')
                       }
+
         self.mfcs   = {}
         self.valves = {}
         self.gauges = {}
@@ -174,60 +175,42 @@ class Etcher(EtcherFrame, COMOperator):
         self.samples = {}
         self.sampleInLoadlock = ''
         self.sampleInCVD = ''
+
         # MFCs
+        LOG.info('initializing MFCs')
         for m in MFC_Addr.keys():
             self.mfcs[m] = MFC(m,self) 
+
         # Valves
+        LOG.info('initializing valves')
         for v in ValveList.keys():
             self.valves[v] = Valve(ValveList[v],self)
-        '''
-        self.valves["Gate"] = BiValve('Gate',self)
-        # for CVD chamber
-        self.valves["Pins"] = BiValve('Pins',self)
-        self.valves["Vacu"] = Valve(SValveList['Vacu'][0],self)
-        self.valves["Film"] = Valve(SValveList['Film'][0],self)
-        
-        # for reaction gas
-        self.valves["Ar"] = Valve(SValveList['Ar'][0], self)
-        LOG.debug('Passed me')
-        self.valves["O2"] = Valve(SValveList['O2'][0], self)
-        self.valves["CO2"] = Valve(SValveList['CO2'][0], self)
-        self.valves["CF4"] = Valve(SValveList['CF4'][0], self)
-        self.valves["SF6"] = Valve(SValveList['SF6'][0], self)
-        self.valves["Feed"] = Valve(SValveList['Feed'][0], self)
-        
-        # for loadlock chamber
-        self.valves["Angl"] = Valve(SValveList['Angl'][0], self)
-        self.valves["TPVa"] = BiValve("TPVa",self)
-        self.valves["Leak"] = Valve(SValveList['Leak'][0], self)
-        self.valves["Isol"] = Valve(SValveList['Isol'][0], self)
-        
-        #for v in Valve_Addr.keys():
-        #    self.valves[v] = Valve(v,self)
-        '''
-        
+                
         #for g in Gauge_Addr.keys():
         #    self.gauges[g] = Gauge(g,self)
 
+        LOG.info("Initialzing pins ... ")
+        for i in range(13):
+            pinMode(i,OUTPUT)
+            digitalWrite(i,HIGH)
+        self.alertSound()        
+
         self.updatable = {'MFC':True,'VALVE':False,'GAUGE':False,'THROTTLE':False,'ROBOT':False}
-        LOG.info('Etcher program %s is initialized !' % Version)
+        
+
         
         self.gd_startTime = 0
         self.gd_totalTime = 1
         self.gd_off = False
-        self.refresh()
+        self.refreshAll()
         
         
         self.btn_moveIn.Enabled = False
         self.btn_moveOut.Enabled = False
         self.btn_llLoadIn.Enabled  = False
         self.btn_llLoadOut.Enabled = False
-        
-##        for i in range(13):
-##            pinMode(i,OUTPUT)
-##            digitalWrite(i,HIGH)
-##        self.alertSound()
-        
+
+        LOG.info('Etcher program %s is initialized !' % Version)
         
     def alertSound(self,N=1):
         return
@@ -236,6 +219,7 @@ class Etcher(EtcherFrame, COMOperator):
             time.sleep(0.1)
             digitalWrite(BeepPin,HIGH)
             time.sleep(0.2)
+
     def mount(self):
         # 手动放置新衬底后，进行后续处理，包括：关闭放气阀、打开前级阀和预抽阀、确认机械泵开启的预抽过程；关闭前级阀、确认分子泵开启、打开插板阀的高真空过程
         
@@ -343,11 +327,9 @@ class Etcher(EtcherFrame, COMOperator):
         
         else:
             wx.MessageBox('移片进反应室时出错！' ,'Warning',wx.YES|wx.ICON_WARNING)
-
-    #@call_after    
+ 
     def deposite(self):
-                      
-        
+                              
         self.gd_off = False
         self.setFlag(self.btn_powerOn)
         self.setFlag(self.btn_powerOff,False)        
@@ -393,29 +375,7 @@ class Etcher(EtcherFrame, COMOperator):
         
         self.gd_startTime = 0     
         self.setFlag(self.btn_powerOn,False)
-        self.setFlag(self.btn_powerOff,True)         
-        '''
-        while not self.gd_off:  # manually power off
-            passed = (time.time() - self.gd_startTime )
-            passed =  int( (passed / self.gd_totalTime) * gaugerange )
-            self.appendLog(passed)
-            if passed >= gaugerange:
-                self.gauge_gd.SetValue(gaugerange)
-                if self.check_autoGD.IsChecked():   # power off automatically
-                    #Power off
-                    ret = self.rf.powerOFF()
-                    self.appendLog('GD ended after %10.1f seconds!' % (time.time() - self.gd_startTime)) 
-                    if not ret:
-                        wx.MessageBox('关闭射频电源错误，请手动关闭！','Warning',wx.YES_NO|wx.ICON_WARNING)
-                    break
-                else:
-                    if wx.MessageBox(time.strftime('设定时间到了 %M:%S, 停止吗?',time.localtime(time.time())),'Warning',wx.YES_NO|wx.ICON_WARNING) == wx.YES:
-                        break
-            else:
-                self.gauge_gd.SetValue(passed)
-            
-            time.sleep(1)
-            '''      
+        self.setFlag(self.btn_powerOff,True) 
 
     def unload(self):
         sampleID = self.txt_cvdMark.GetValue()
@@ -449,9 +409,9 @@ class Etcher(EtcherFrame, COMOperator):
                                 
         else:
             
-            wx.MessageBox('移片进反应室时出错！' ,'Warning',wx.YES|wx.ICON_WARNING)
+            wx.MessageBox('移片进反应室时出错A！' ,'Warning',wx.YES|wx.ICON_WARNING)
         
-    def refresh(self,interval = 1):
+    def refreshAll(self,interval = 1):
         if self.updatable['MFC']:
             thread.start_new_thread(self.refreshMFCs,(1,))
         if self.updatable['VALVE']:
@@ -478,25 +438,26 @@ class Etcher(EtcherFrame, COMOperator):
 
 
     def refreshMFCs(self,interval = 0.5):
-        try:
-
-            while True:
+        while True:
+            try:
                 ret,val = self.mfcs[MFC_Addr.keys()[0]].getAll()
                 LOG.debug(val)
                 if ret:
-                    wx.CallAfter(self.label_Ar.SetLabel,'%4.1f' % ( val["Ar"] * 100.0 ))
-                    wx.CallAfter(self.label_CO2.SetLabel,'%4.1f' % ( val["CO2"] * 100.0 ) )
-                    wx.CallAfter(self.label_O2.SetLabel,'%4.1f' % ( val["O2"] * 100.0 ) )
-                    wx.CallAfter(self.label_CF4.SetLabel,'%4.1f' % ( val["CF4"] * 100.0 ) )
-                    wx.CallAfter(self.label_SF6.SetLabel,'%4.1f' % ( val["SF6"] * 100.0 ) )
-                    LOG.debug('MFCs were refreshed!')
+                    wx.CallAfter(self.label_Ar.SetLabel,'%4.2f' % ( val["Ar"] * 100.0 ))
+                    wx.CallAfter(self.label_CO2.SetLabel,'%4.2f' % ( val["CO2"] * 100.0 ) )
+                    wx.CallAfter(self.label_O2.SetLabel,'%4.2f' % ( val["O2"] * 100.0 ) )
+                    wx.CallAfter(self.label_CF4.SetLabel,'%4.2f' % ( val["CF4"] * 100.0 ) )
+                    wx.CallAfter(self.label_SF6.SetLabel,'%4.2f' % ( val["SF6"] * 100.0 ) )                    
                     wx.CallAfter(self.label_cvd_pressure.SetLabel,'反应气压：%5.3f mTorr'% ( val["Film"] * 1000.0 - FILM_OFFSET) )
     #                wx.CallAfter(self.label_High.SetLabel,'高真空：%.2e'% float(val['CVD_High']))
     #                wx.CallAfter(self.label_Low.SetLabel,'低真空：%.2e'% float(val['CVD_Low']))
-                     wx.CallAfter(self.label_ll_pressure.SetLabel,'气压：%5.3f mTorr'% (float(val['Loadlock'] - LL_OFFSET )))
+                    wx.CallAfter(self.label_ll_pressure.SetLabel,'气压：%5.3f mTorr'% (float(val['Loadlock'] * 1000.0 - LL_OFFSET )))
                 time.sleep(interval)
-        except Exception as ex:
-            LOG.warn("Refresh MFCs error: %s"%ex)
+                LOG.debug('MFCs were refreshed!')
+            except Exception as ex:
+                traceback.print_exc()
+                LOG.warn("Refresh MFCs error: %s"%ex)
+                continue
 
     def refreshValves(self,interval = 1):
         time.sleep(interval)
@@ -504,25 +465,27 @@ class Etcher(EtcherFrame, COMOperator):
     
     def setFlag(self,ctrl,isOn = True, valid = True):
         if not valid:
-            ctrl.SetBackgroundColour(BTN_COLOUR['Unkown_BG'])
+            #ctrl.SetBackgroundColour(BTN_COLOUR['Unkown_BG'])
+            #ctrl.SetForegroundColour(BTN_COLOUR['Unkown_FG'])
             return
         if isOn:
             ctrl.SetBackgroundColour(BTN_COLOUR['ON_BG'])
-            #ctrl.SetForegroundColour(BTN_COLOUR['ON_FG'])    
+            ctrl.SetForegroundColour(BTN_COLOUR['ON_FG'])    
         else:
-            ctrl.SetBackgroundColour(BTN_COLO：广州
-性别：保密
+            ctrl.SetBackgroundColour(BTN_COLOUR['OFF_BG'])
+            ctrl.SetForegroundColour(BTN_COLOUR['OFF_FG'])
 
-注册时间：UR['OFF_BG'])
-            #ctrl.SetForegroundColour(BTN_COL：广州
-性别：保密
-
-注册时间：OUR['OFF_FG'])            
+    def initBtn():
+        ctrls = [btn_GateClose, btn_tpOffOn, btn_isoOff, btn_leakOff, btn_roughOff, btn_llTMPOff, btn_roughPumpOff \
+        , btn_PowerOff, btn_liftDwon, btn_cvdTMPOff, btn_filmOff, btn_vacuumOff, btn_cvdRoughOff, btn_throttleAuto, btn_throttleClose]
+        for btn in ctrls:
+            setFlag(btn,True)
+    
     def appendLog(self,info):
         info = '%s:\n %s '% (time.strftime('%H:%M:%S',time.localtime(time.time())), info)
         self.txt_log.AppendText("\n%s"%info)
 
-        # Virtual event handlers, overide them in your derived class
+    # Virtual event handlers, overide them in your derived class
     def EtcherFrameOnClose( self, event ):
         event.Skip()
         try :
@@ -572,8 +535,8 @@ class Etcher(EtcherFrame, COMOperator):
 
         if wx.NO == wx.MessageBox('要打开门阀，继续?' ,'Question',wx.YES_NO|wx.ICON_QUESTION):
             return
-        self.setFlag(self.btn_gateOpen,True)
-        self.setFlag(self.btn_gateClose,False)
+        self.setFlag(self.btn_gateOpen)
+        self.setFlag(self.btn_GateClose,False)
 
         if not self.valves['Gate'].open():
             wx.MessageBox('打开门阀时出错!','Warning',wx.YES|wx.ICON_WARNING)
@@ -585,7 +548,7 @@ class Etcher(EtcherFrame, COMOperator):
         if wx.NO == wx.MessageBox('要关闭门阀，继续?', 'Question', wx.YES_NO|wx.ICON_QUESTION):
             return
         self.setFlag(self.btn_gateOpen,False)
-        self.setFlag(self.btn_gateClose,True)
+        self.setFlag(self.btn_GateClose)
 
         if not self.valves['Gate'].close():
             wx.MessageBox('关闭门阀时出错!', 'Warning',wx.YES|wx.ICON_WARNING)
@@ -660,7 +623,7 @@ class Etcher(EtcherFrame, COMOperator):
         if not self.valves['Isol'].close():
             wx.MessageBox('关闭预抽阀时出错!','Warning',wx.YES|wx.ICON_WARNING)
             self.setFlag(self.btn_isoOff,valid = False )
-            returnal / 100 * self.throttle.maxRange - self.throttle.
+            return
         
         
     def btn_roughOnOnButtonClick( self, event ):
@@ -785,34 +748,45 @@ class Etcher(EtcherFrame, COMOperator):
         self.throttle.manualMode = self.btn_throttleAuto.GetValue()
 
     def btn_throttleOpenOnButtonClick( self, event ):
-        self.setFlag(self.btn_throttlOpen)
-        self.setFlag(self.btn_throttleClose,False)         
-
+        self.setFlag(self.btn_throttleOpen)
+        self.setFlag(self.btn_throttleClose,False)
+        self.appendLog("OPENED:%s CLOSED%s" %(self.throttle.LL,self.throttle.RL))
         self.throttle.gotoLimit()
-        self.spin_throttleValue.SetValue(int(self.throttle.location / self.throttle.maxRange * 100))
+        self.spin_throttleValue.SetValue(self.throttle.location)
 
         
 
     def btn_throttleCloseOnButtonClick( self, event ):
-        self.setFlag(self.btn_throttlClose)
+        self.setFlag(self.btn_throttleClose)
         self.setFlag(self.btn_throttleOpen,False) 
-
+        
+        self.appendLog("OPENED:%s CLOSED%s" %(self.throttle.LL,self.throttle.RL))
         self.throttle.gotoZero()
-        self.spin_throttleValue.SetValue(int(self.throttle.location / self.throttle.maxRange * 100))
+        self.spin_throttleValue.SetValue(self.throttle.location)
                         
 
     def spin_throttleValueOnSpinCtrl( self, event ):
-        self.spin_throttleValueOnTextEnter()
+        locVal = self.spin_throttleValue.GetValue()
+        pulses = locVal - self.throttle.location
+
+        self.throttle.move(pulses)
+        self.appendLog('L:%s R:%s O:%s location:%s'%(self.throttle.LL,self.throttle.RL,self.throttle.zero,self.throttle.location))
+
+        return
+        locVal = self.spin_throttleValue.GetValue()
+        pulses = ( locVal - self.throttle.preLoc ) 
+
+        self.throttle.move(pulses)
+        self.throttle.readStatus()
+        self.appendLog('L:%s R:%s O:%s location:%s'%(self.throttle.LL,self.throttle.RL,self.throttle.zero,self.throttle.location))
+        self.throttle.preLoc = locVal
 
     def spin_throttleValueOnTextEnter( self, event ):
         locVal = self.spin_throttleValue.GetValue()
-        pulses = locVal / 100 * self.throttle.maxRange - self.throttle.location
-        if pulses > 0:
-            self.throttle.move(pulses)
-        else:
-            pulses = - pulses
-            self.throttle.move(pulses)
+        pulses = locVal - self.throttle.location
 
+        self.throttle.move(pulses)
+        
 
     def check_ArOnCheckBox( self, event ):
         if (self.check_Ar.IsChecked()):
@@ -854,7 +828,7 @@ class Etcher(EtcherFrame, COMOperator):
             self.appendLog("%s valve was CLOSED"% (gasname))
         fv = flowvalue  # * MFC_FULL_SCALE / MFC_Addr[gasname][3]  # tranlate to voltage signal
         self.mfcs[gasname].setFlow(fv)
-        ,fv = self.mfcs[gasname].getFlow()
+        ret,fv = self.mfcs[gasname].getFlow()
         self.appendLog("%s was adjusted to %s SCCM"% (gasname, fv))
 
     def check_CO2OnCheckBox( self, event ):
@@ -877,7 +851,7 @@ class Etcher(EtcherFrame, COMOperator):
             return
         fv = flowvalue  # * MFC_FULL_SCALE / MFC_Addr[gasname][3]  # tranlate to voltage signal
         self.mfcs[gasname].setFlow(fv)
-        ,fv = self.mfcs[gasname].getFlow()
+        ret, fv = self.mfcs[gasname].getFlow()
         self.appendLog("%s was adjusted to %s SCCM"% (gasname, fv))
 
         if flowvalue > 0:            
@@ -913,7 +887,7 @@ class Etcher(EtcherFrame, COMOperator):
             return
         fv = flowvalue  # * MFC_FULL_SCALE / MFC_Addr[gasname][3]  # tranlate to voltage signal
         self.mfcs[gasname].setFlow(fv)
-        ,fv = self.mfcs[gasname].getFlow()
+        ret, fv = self.mfcs[gasname].getFlow()
         self.appendLog("%s was adjusted to %s SCCM"% (gasname, fv))
 
         if flowvalue > 0:            
@@ -949,7 +923,7 @@ class Etcher(EtcherFrame, COMOperator):
             return
         fv = flowvalue  # * MFC_FULL_SCALE / MFC_Addr[gasname][3]  # tranlate to voltage signal
         self.mfcs[gasname].setFlow(fv)
-        ,fv = self.mfcs[gasname].getFlow()
+        ret, fv = self.mfcs[gasname].getFlow()
         self.appendLog("%s was adjusted to %s SCCM"% (gasname, fv))
 
         if flowvalue > 0:            
@@ -984,7 +958,7 @@ class Etcher(EtcherFrame, COMOperator):
             return
         fv = flowvalue  # * MFC_FULL_SCALE / MFC_Addr[gasname][3]  # tranlate to voltage signal
         self.mfcs[gasname].setFlow(fv)
-        ,fv = self.mfcs[gasname].getFlow()
+        ret, fv = self.mfcs[gasname].getFlow()
         self.appendLog("%s was adjusted to %s SCCM"% (gasname, fv))
 
         if flowvalue > 0:            

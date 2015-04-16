@@ -110,8 +110,8 @@ MFC_Addr = {
     'O2':   [AO1_Addr,AI1_Addr,5,100.0,30180],
     'CF4':  [AO1_Addr,AI1_Addr,3,100.0,30220],
     'SF6':  [AO1_Addr,AI1_Addr,4,100.0,30260],
-    'Film':    [AO1_Addr,AI1_Addr,7,100,30300],
-    'Loadlock':[AO1_Addr,AI1_Addr,5,100,30340],
+    'Film':    [AO1_Addr,AI1_Addr,6,100,30300],
+    'Loadlock':[AO1_Addr,AI1_Addr,7,100,30340],
     'CVD_High':[AO1_Addr,AI1_Addr,2,100,30380],
     'CVD_Low': [AO1_Addr,AI1_Addr,2,100,30420]
 }
@@ -303,6 +303,7 @@ class COMOperator(object):
         
         self.isbusy.set()
         buf = self.get_crc(databytes)
+        self.port.flushInput()
         self.port.write(buf)
         
         data = ''
@@ -486,7 +487,7 @@ class Valve(object):
                     self.port.log.info('Open valve %s SUCCESSFULLY'%self.id)
                     return True
                 else:
-                    self.port.log.warn('Try to open valve % FAILED'%self.id)
+                    self.port.log.warn('Try to open valve %s FAILED'%self.id)
                     return False
 
     def close(self,ret = False):
@@ -495,7 +496,7 @@ class Valve(object):
             ret,buf = self.port.readCOM()
             if ret and len(buf) >   5:
                 if ord(buf[ 4 ]) > 0:
-                    self.port.log.warn('Try to close valve % FAILED'%self.id)
+                    self.port.log.warn('Try to close valve %s FAILED'%self.id)
                     return False
                 else:
                     self.port.log.info('Close valve %s SUCCESSFULLY'%self.id)
@@ -643,7 +644,7 @@ class MFC(object):
         # 输入：无
         # 返回：所有通道的流量（flow1,flow2,flow3,flow4,flow5）
         ret =  0
-        s = [self.rAddr,READ_AI_INPUT,0, 0, 0, 5]#MFC_Addr[MFC_Addr.keys()[0]][2],0,5]
+        s = [self.rAddr,READ_AI_INPUT,0, 0, 0, 8]#MFC_Addr[MFC_Addr.keys()[0]][2],0,5]
         self.port.writeCOM(s)
         ret,data = self.port.readCOM()
         if ret and len(data) > 5:
@@ -663,49 +664,103 @@ class MFC(object):
         return False, None
 
 class Motor(object):
+    # simple motor driver
 
-    def __init__(self,id,port,maxRange = 100000000):
+    # rotating by pulses, setting max speed, setting acceleration value
+    def __init__(self,id,port,maxRange = 100):
         self.id = id
         self.addr = Motor_Addr[id][0]
         self.port = port
-        self.location = 0
+        
         self.maxRange = maxRange
         self.minRange = 0
         self.zero = 0
         self.LL = 0
         self.RL = 0
-        self.stepsize = 1000
-        self.steptime = 0.2
-
-        self.findLimit()
-
+        self.stepsize = 30
+        self.steptime = 0.1
+        self.preLoc  = 0
+        self.location = self.preLoc
+        self.isRunning = 0
 
         self.port.log.info("Motor %s is initilized !"%self.id)
 
     def findLimit(self):
-        self.gotoLimit()
-        self.maxRange = 0
-        while self.zero == 0:
-            self.move(self.stepsize,True)
-            self.readStatus()
-            self.maxRange += self.stepsize
+        if self.RL:
+            self.move(10)
+        if self.LL:
+            self.move(-10)
 
-    def move(self,pulses,isBackward = False):
+        self.gotoZero()
+        self.minRange = 0
+        self.port.log.info("Find zero:%s" % self.minRange)
+        self.gotoLimit()
+        
+        self.maxRange = 100
+        self.stepsize = self.location * self.stepsize / 100
+        self.port.log.info("Set stepsize to:%s" % self.stepsize)
+
+    def move(self,pls,isBackward = False):
+        # 转动指定脉冲，正数正转，负数反转
+
+        pulses = pls * self.stepsize
 
         s=[self.addr,0x32,0x04,0x00,0x00,0x00,0x00]
 
+        if pulses < 0:
+            pulses = - pulses
+            s[3] = 1
         s[4] = (pulses >> 16) % 256
         s[5] = (pulses >> 8 ) % 256
         s[6] = pulses % 256
 
-        if isBackward :
-            pulses = - pulses
-            s[3] = 1
+        self.port.log.debug('Moved %x,%x,%x' % (s[4],s[5],s[6]))
 
         if not self.port.writeCOM(s):
             return False
-        self.location += pulses
+        self.location += pls
+        self.isRunning = 1
+        while self.isRunning:
+            self.readStatus()
+            time.sleep(self.steptime)
         return True
+
+    def setMaxSpeed(self,spdVal):
+        # 设置最高速度
+        if spdVal > 100000 : spdVal = 100000
+        if spdVal <= 0 : return False
+
+        s = [self.addr, 0x27, 4, 0, 0, 0, 0 ]
+        s[3] = ( spdVal >> 24 ) % 256
+        s[4] = ( spdVal >> 16 ) % 256
+        s[5] = ( spdVal >> 8  ) % 256
+        s[6] = spdVal % 256
+        
+        if not self.port.writeCOM(s):
+            return False
+
+        ret,data = self.port.readCOM()
+        
+        return ( ret and ( ord(data[1]) == 0x27 ) )
+
+    def setAccel(self,accVal):
+        # 设置加减速度
+        if accVal > 100000 : accVal = 100000
+        if accVal <= 0 : return False
+
+        s = [self.addr, 0x2B, 4, 0, 0, 0, 0 ]
+        s[3] = ( accVal >> 24 ) % 256
+        s[4] = ( accVal >> 16 ) % 256
+        s[5] = ( accVal >> 8  ) % 256
+        s[6] = accVal % 256
+        
+        if not self.port.writeCOM(s):
+            return False
+
+        ret,data = self.port.readCOM()
+        
+        return ( ret and ( ord(data[1]) == 0x2B ) )
+
 
     def stop(self):
         
@@ -714,28 +769,25 @@ class Motor(object):
             return False
         return True
 
-    def gotoZero(self):
+    def gotoLimit(self):
         self.pause = False
-        while self.zero == 0:
-            if self.location <= self.minRange :
-                break
-            self.move(self.location - self.minRange, True)
-            self.readStatus()
+        while self.LL:
+            self.move(self.stepsize)
+            
             if self.pause:
                 break
             self.port.log.debug('%s location is %s'%(self.id,self.location))
+        #self.location = self.maxRange
 
-
-    def gotoLimit(self):
+    def gotoZero(self):
         self.pause = False
-        while self.RL == 0:
-            if self.location >= self.maxRange:
-                break
-            self.move(self.maxRange - self.location, False)
-            self.readStatus()
+        while self.RL:
+            self.move(-self.stepsize)
+            
             if self.pause :
                 break
             self.port.log.debug('%s location is %s'%(self.id,self.location))
+        self.locaton = self.minRange
 
     def readStatus(self):
         s = [self.addr, 0x3B, 0 ]
@@ -743,18 +795,24 @@ class Motor(object):
             return False,None        
         ret,data = self.port.readCOM()
         if ret:
-            self.running,self.LL,self.zero,self.RL = \
+            if len(data) > 5:
+                self.isRunning,self.LL,self.zero,self.RL = \
                                             ( ord( data[3] ), ord( data[4] ),\
                                             ord( data[5] ),ord( data[6] ) )
-            return True,( ord( data[3] ), ord( data[4] ),\
+                return True,( ord( data[3] ), ord( data[4] ),\
                           ord( data[5] ),ord( data[6] ) )
+            else:
+                return True, data
         else:
-            return False, None
+            return False, data
+
+            
 class RFPower(object):
     def __init__(self,ID,port):
         self.ID = ID
         self.addr = RF_Addr
         self.port = port
+        self.port.log.info("RF power %s is initilized" % self.ID)
     def powerON(self):
         
         s = [01, 05, 00, 00, 0xFF, 00]
